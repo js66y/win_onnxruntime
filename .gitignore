@@ -1,0 +1,15 @@
+# 构建产物
+build/
+
+# 预编译第三方库与模型(体积巨大, 获取方式见 DESIGN.md)
+third_party/
+models/
+
+# 官方仓库源码副本(仅本地参考用)
+onnxruntime-genai-main/
+sherpa-onnx-master/
+
+# IDE / 编辑器
+.vs/
+.vscode/
+.idea/
