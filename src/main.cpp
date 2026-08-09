@@ -1,3 +1,7 @@
+#include <windows.h>
+
+#include <shellapi.h>  // ShellExecuteW(WIN32_LEAN_AND_MEAN 不包含它)
+
 #include <atomic>
 #include <csignal>
 #include <filesystem>
@@ -6,6 +10,9 @@
 #include <string>
 #include <vector>
 
+#include <boost/asio/io_context.hpp>
+#include <boost/asio/signal_set.hpp>
+
 #include "common/config.h"
 #include "common/console.h"
 #include "common/log.h"
@@ -13,6 +20,8 @@
 #include "engine/audio_io.h"
 #include "engine/llm/genai_llm.h"
 #include "engine/tts/sherpa_tts.h"
+#include "server/chat_service.h"
+#include "server/http_server.h"
 
 namespace {
 
@@ -174,9 +183,50 @@ int RunVoiceFile(const echo::AppConfig& config,
   return 0;
 }
 
+// Web 服务模式(M3): 浏览器聊天界面
+int RunServer(const echo::AppConfig& config) {
+  std::cout << "正在加载模型 " << config.llm.model_dir.filename().string()
+            << " ..." << std::flush;
+  auto chat = echo::server::ChatService::Create(config);
+  if (!chat) {
+    std::cout << "\n";
+    echo::log::Error("{}", chat.error().message);
+    return 1;
+  }
+  std::cout << " 完成\n";
+
+  boost::asio::io_context ioc;
+  if (auto started = echo::server::StartHttpServer(ioc, config, **chat);
+      !started) {
+    echo::log::Error("{}", started.error().message);
+    return 1;
+  }
+
+  // Ctrl+C / 关闭信号: 停掉事件循环, ChatService 析构时会停推理线程
+  boost::asio::signal_set signals(ioc, SIGINT, SIGTERM);
+  signals.async_wait([&ioc](auto, auto) { ioc.stop(); });
+
+  const auto url = std::format("http://{}:{}/", config.server.host,
+                               config.server.port);
+  std::cout << std::format(
+                   "\x1b[36mEcho 服务已启动: {}\x1b[0m\n按 Ctrl+C 退出\n", url)
+            << std::flush;  // stdout 重定向时也立即可见
+
+  // 自动打开浏览器
+  const std::wstring wide_url(url.begin(), url.end());
+  ShellExecuteW(nullptr, L"open", wide_url.c_str(), nullptr, nullptr,
+                SW_SHOWNORMAL);
+
+  ioc.run();
+  std::cout << "服务已停止\n";
+  return 0;
+}
+
 void PrintUsage() {
   std::cout << "用法:\n"
             << "  echo.exe [config.json]              交互式文字聊天\n"
+            << "  echo.exe --serve [--config config.json]\n"
+            << "                                      Web 服务(浏览器聊天界面)\n"
             << "  echo.exe --voice <in.wav> [out.wav] [--config config.json]\n"
             << "                                      语音问答(wav 进 wav 出)\n";
 }
@@ -187,6 +237,7 @@ int main(int argc, char** argv) {
   echo::console::Init();
 
   // 解析命令行
+  bool serve_mode = false;
   bool voice_mode = false;
   std::filesystem::path input_wav;
   std::filesystem::path output_wav = "reply.wav";
@@ -195,7 +246,9 @@ int main(int argc, char** argv) {
 
   for (int i = 1; i < argc; ++i) {
     const std::string_view arg = argv[i];
-    if (arg == "--voice") {
+    if (arg == "--serve") {
+      serve_mode = true;
+    } else if (arg == "--voice") {
       voice_mode = true;
     } else if (arg == "--config" && i + 1 < argc) {
       config_file = argv[++i];
@@ -225,6 +278,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
+  if (serve_mode) return RunServer(*config);
   return voice_mode ? RunVoiceFile(*config, input_wav, output_wav)
                     : RunInteractive(*config);
 }

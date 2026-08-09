@@ -12,6 +12,9 @@ add_library(echo_core STATIC
   engine/llm/genai_llm.cpp
   engine/tts/sherpa_tts.cpp
   engine/vad/silero_vad.cpp
+  server/chat_service.cpp
+  server/http_server.cpp
+  server/ws_session.cpp
 )
 
 target_include_directories(echo_core PUBLIC
@@ -33,13 +36,17 @@ target_link_libraries(echo_core PUBLIC
   sherpa-onnx-cxx-api
   sherpa-onnx-c-api
   nlohmann_json::nlohmann_json
+  Boost::beast
+  Boost::asio
 )
 
 # SHERPA_ONNX_BUILD_SHARED_LIBS: 消费预编译 DLL 时启用 dllimport
+# _WIN32_WINNT=0x0A00: Asio 需要明确目标 Windows 版本(Win10+)
 target_compile_definitions(echo_core PUBLIC
   NOMINMAX
   WIN32_LEAN_AND_MEAN
   SHERPA_ONNX_BUILD_SHARED_LIBS
+  _WIN32_WINNT=0x0A00
 )
 
 if(MSVC)
@@ -70,7 +77,7 @@ endfunction()
 # echo 主程序
 # ---------------------------------------------------------------------------
 add_executable(echo main.cpp)
-target_link_libraries(echo PRIVATE echo_core)
+target_link_libraries(echo PRIVATE echo_core shell32)  # shell32: 启动时自动打开浏览器
 if(MSVC)
   target_compile_options(echo PRIVATE /W4)
 endif()

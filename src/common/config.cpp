@@ -85,6 +85,16 @@ Result<AppConfig> AppConfig::LoadFile(const std::filesystem::path& file) {
     vad.sample_rate = it->value("sample_rate", vad.sample_rate);
   }
 
+  config.server.web_root = base / "web";  // 默认: 配置文件旁的 web/
+  if (const auto it = json.find("server"); it != json.end()) {
+    auto& server = config.server;
+    server.host = it->value("host", server.host);
+    server.port = it->value("port", server.port);
+    if (const auto web_root = it->value("web_root", ""); !web_root.empty()) {
+      server.web_root = ResolvePath(base, web_root);
+    }
+  }
+
   config.system_prompt = json.value("system_prompt", config.system_prompt);
 
   if (config.llm.model_dir.empty()) {

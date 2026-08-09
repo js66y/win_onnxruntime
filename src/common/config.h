@@ -46,11 +46,19 @@ struct VadConfig {
   int sample_rate = 16000;
 };
 
+// HTTP/WebSocket 服务
+struct ServerConfig {
+  std::string host = "127.0.0.1";
+  int port = 8080;
+  std::filesystem::path web_root;  // 前端静态文件目录, 默认配置文件旁的 web/
+};
+
 struct AppConfig {
   LlmConfig llm;
   AsrConfig asr;
   TtsConfig tts;
   VadConfig vad;
+  ServerConfig server;
   std::string system_prompt =
       "你是\"回声\"(Echo), 一个完全离线运行的中文语音助手。"
       "回答保持简短、口语化。";

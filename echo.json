@@ -31,5 +31,10 @@
     "max_speech_seconds": 20.0,
     "sample_rate": 16000
   },
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8080,
+    "web_root": "web"
+  },
   "system_prompt": "你是\"回声\"(Echo), 一个完全离线运行的中文语音助手。用中文回答, 保持简短、口语化, 除非用户要求详细说明。"
 }
