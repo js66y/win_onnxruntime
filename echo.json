@@ -7,5 +7,29 @@
     "top_p": 0.8,
     "disable_thinking": true
   },
+  "asr": {
+    "model": "models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/model.int8.onnx",
+    "tokens": "models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/tokens.txt",
+    "num_threads": 2,
+    "language": "auto",
+    "use_itn": true
+  },
+  "tts": {
+    "model": "models/vits-melo-tts-zh_en/model.onnx",
+    "lexicon": "models/vits-melo-tts-zh_en/lexicon.txt",
+    "tokens": "models/vits-melo-tts-zh_en/tokens.txt",
+    "dict_dir": "models/vits-melo-tts-zh_en/dict",
+    "num_threads": 2,
+    "speaker_id": 0,
+    "speed": 1.0
+  },
+  "vad": {
+    "model": "models/silero_vad.onnx",
+    "threshold": 0.5,
+    "min_silence_seconds": 0.5,
+    "min_speech_seconds": 0.25,
+    "max_speech_seconds": 20.0,
+    "sample_rate": 16000
+  },
   "system_prompt": "你是\"回声\"(Echo), 一个完全离线运行的中文语音助手。用中文回答, 保持简短、口语化, 除非用户要求详细说明。"
 }

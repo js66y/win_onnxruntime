@@ -12,6 +12,7 @@ enum class ErrorCode {
   kConfigInvalid,
   kModelLoadFailed,
   kGenerationFailed,
+  kIo,
 };
 
 struct Error {

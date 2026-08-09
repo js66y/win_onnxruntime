@@ -24,3 +24,9 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(nlohmann_json)
 
 add_subdirectory(src)
+
+option(ECHO_BUILD_TESTS "Build unit/integration tests" ON)
+if(ECHO_BUILD_TESTS)
+  enable_testing()
+  add_subdirectory(tests)
+endif()
