@@ -33,6 +33,7 @@ struct SpeechService::Impl {
   Callbacks callbacks;
 
   std::atomic<const void*> mic_owner{nullptr};
+  std::atomic<uint64_t> tts_epoch{0};  // CancelTts 时自增, 丢弃过期合成结果
   bool was_speaking = false;  // 仅音频线程访问
 
   BoundedQueue<AudioTask> audio_queue{256};
@@ -85,8 +86,11 @@ struct SpeechService::Impl {
   void TtsLoop(std::stop_token stop) {
     while (auto task = tts_queue.Pop(stop)) {
       const auto handlers = GetCallbacks();
+      const uint64_t epoch_at_start = tts_epoch.load();
 
       if (std::holds_alternative<TtsDoneMarker>(*task)) {
+        // 打断后入队的旧哨兵直接丢弃; 新轮次会再放自己的哨兵
+        if (tts_epoch.load() != epoch_at_start) continue;
         if (handlers.on_tts_done) handlers.on_tts_done();
         continue;
       }
@@ -94,10 +98,11 @@ struct SpeechService::Impl {
       auto& sentence = std::get<std::string>(*task);
       const auto speakable = dialog::StripForTts(sentence);
       if (speakable.find_first_not_of(" \t\r\n") == std::string::npos) {
-        continue;  // 全是空白/记号, 没东西可读
+        continue;
       }
 
       auto audio = tts->Synthesize(speakable);
+      if (tts_epoch.load() != epoch_at_start) continue;  // 合成期间被打断
       if (!audio) {
         if (handlers.on_error) handlers.on_error(audio.error().message);
         continue;
@@ -180,7 +185,10 @@ void SpeechService::SubmitTtsDoneMarker() {
   impl_->tts_queue.Push(TtsDoneMarker{}, impl_->tts_worker.get_stop_token());
 }
 
-void SpeechService::CancelTts() { impl_->tts_queue.Clear(); }
+void SpeechService::CancelTts() {
+  impl_->tts_epoch.fetch_add(1);
+  impl_->tts_queue.Clear();
+}
 
 int SpeechService::tts_sample_rate() const { return impl_->tts_sample_rate; }
 

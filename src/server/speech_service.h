@@ -60,7 +60,7 @@ class SpeechService {
   // 在当前批次句子之后放一个"完成"哨兵, 全部合成完时触发 on_tts_done
   void SubmitTtsDoneMarker();
 
-  // 丢弃所有排队中的合成任务(打断)
+  // 丢弃所有排队中的合成任务(打断); 正在合成的那句完成后也不会下发
   void CancelTts();
 
   [[nodiscard]] int tts_sample_rate() const;

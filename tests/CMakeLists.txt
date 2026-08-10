@@ -12,6 +12,8 @@ add_executable(echo_tests
   test_config.cpp
   test_engines.cpp
   test_sentence_splitter.cpp
+  test_tools.cpp
+  test_session_store.cpp
 )
 
 target_link_libraries(echo_tests PRIVATE

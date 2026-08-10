@@ -98,6 +98,18 @@ body {
 }
 .btn-ghost:hover { color: var(--text); border-color: var(--accent); }
 
+.role-select {
+  background: var(--bg-soft);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+}
+.role-select:focus { border-color: var(--accent); }
+
 /* ============ 聊天区 ============ */
 .chat {
   flex: 1;

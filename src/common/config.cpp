@@ -16,14 +16,36 @@ std::filesystem::path ExecutableDir() {
   return std::filesystem::path(buffer).parent_path();
 }
 
-// 相对路径基于配置文件目录解析; 绝对路径原样返回; 空串返回空 path
 std::filesystem::path ResolvePath(const std::filesystem::path& base,
                                   const std::string& value) {
   if (value.empty()) return {};
   return base / std::filesystem::path(value);
 }
 
+void EnsureDefaultRoles(AppConfig& config) {
+  if (!config.roles.empty()) return;
+  config.roles.push_back({
+      .id = "echo",
+      .name = "回声",
+      .system_prompt = config.system_prompt,
+  });
+  config.active_role = "echo";
+}
+
 }  // namespace
+
+const RoleConfig* AppConfig::FindRole(std::string_view id) const {
+  for (const auto& role : roles) {
+    if (role.id == id) return &role;
+  }
+  return nullptr;
+}
+
+std::string AppConfig::ActiveSystemPrompt() const {
+  if (const auto* role = FindRole(active_role)) return role->system_prompt;
+  if (!roles.empty()) return roles.front().system_prompt;
+  return system_prompt;
+}
 
 Result<AppConfig> AppConfig::LoadFile(const std::filesystem::path& file) {
   std::ifstream in(file);
@@ -85,7 +107,8 @@ Result<AppConfig> AppConfig::LoadFile(const std::filesystem::path& file) {
     vad.sample_rate = it->value("sample_rate", vad.sample_rate);
   }
 
-  config.server.web_root = base / "web";  // 默认: 配置文件旁的 web/
+  config.server.web_root = base / "web";
+  config.server.db_path = base / "data" / "echo.db";
   if (const auto it = json.find("server"); it != json.end()) {
     auto& server = config.server;
     server.host = it->value("host", server.host);
@@ -93,9 +116,26 @@ Result<AppConfig> AppConfig::LoadFile(const std::filesystem::path& file) {
     if (const auto web_root = it->value("web_root", ""); !web_root.empty()) {
       server.web_root = ResolvePath(base, web_root);
     }
+    if (const auto db_path = it->value("db_path", ""); !db_path.empty()) {
+      server.db_path = ResolvePath(base, db_path);
+    }
   }
 
   config.system_prompt = json.value("system_prompt", config.system_prompt);
+  config.active_role = json.value("active_role", config.active_role);
+
+  if (const auto it = json.find("roles"); it != json.end() && it->is_array()) {
+    for (const auto& item : *it) {
+      RoleConfig role;
+      role.id = item.value("id", "");
+      role.name = item.value("name", role.id);
+      role.system_prompt = item.value("system_prompt", "");
+      if (!role.id.empty() && !role.system_prompt.empty()) {
+        config.roles.push_back(std::move(role));
+      }
+    }
+  }
+  EnsureDefaultRoles(config);
 
   if (config.llm.model_dir.empty()) {
     return Fail(ErrorCode::kConfigInvalid, "{} 缺少 llm.model_dir 字段",

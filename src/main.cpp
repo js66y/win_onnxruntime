@@ -22,6 +22,8 @@
 #include "engine/tts/sherpa_tts.h"
 #include "server/chat_service.h"
 #include "server/http_server.h"
+#include "server/server_context.h"
+#include "storage/session_store.h"
 
 namespace {
 
@@ -205,10 +207,22 @@ int RunServer(const echo::AppConfig& config) {
     echo::log::Warn("语音功能不可用: {}", created.error().message);
   }
 
+  auto store =
+      echo::storage::SessionStore::Open(config.server.db_path);
+  if (!store) {
+    echo::log::Error("打开会话数据库失败: {}", store.error().message);
+    return 1;
+  }
+  std::cout << "会话库: " << config.server.db_path.string() << "\n";
+
+  echo::server::ServerContext ctx;
+  ctx.config = &config;
+  ctx.chat = chat->get();
+  ctx.speech = speech.get();
+  ctx.store = store->get();
+
   boost::asio::io_context ioc;
-  if (auto started = echo::server::StartHttpServer(ioc, config, **chat,
-                                                   speech.get());
-      !started) {
+  if (auto started = echo::server::StartHttpServer(ioc, ctx); !started) {
     echo::log::Error("{}", started.error().message);
     return 1;
   }

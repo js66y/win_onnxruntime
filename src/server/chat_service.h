@@ -35,6 +35,10 @@ class ChatService {
   // 提交清空会话(排队); done(true) 表示成功
   void SubmitReset(std::function<void(bool ok)> done);
 
+  // 换角色: 用新 system prompt 重建 KV cache
+  void SubmitRestart(std::string system_prompt,
+                     std::function<void(bool ok)> done);
+
   // 打断当前正在进行的生成(线程安全, 立即生效)
   void RequestStop();
 

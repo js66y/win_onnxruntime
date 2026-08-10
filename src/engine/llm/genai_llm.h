@@ -50,6 +50,9 @@ class GenAiLlm {
   // 清空聊天历史, 回到系统提示词之后的状态
   [[nodiscard]] Result<void> ResetSession();
 
+  // 换一套系统提示词并重建会话(角色切换)
+  [[nodiscard]] Result<void> RestartSession(std::string_view system_prompt);
+
   [[nodiscard]] const LlmTurnStats& last_stats() const;
 
  private:

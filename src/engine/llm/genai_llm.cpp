@@ -80,16 +80,7 @@ std::generator<std::string> GenAiLlm::Chat(std::string user_text) {
   auto& impl = *impl_;
   impl.stats = {};
 
-  // 复位可能挂起的终止标志: RequestStop() 可能在没有生成进行时被调用
-  // (如连接断开时), 不复位的话之后所有请求都会报 "Session in Terminated state"
-  try {
-    impl.generator->SetRuntimeOption("terminate_session", "0");
-  } catch (const std::exception& e) {
-    log::Warn("复位终止标志失败: {}", e.what());
-  }
-
-  // 复位终止标志: RequestStop 可能在空闲期被调用(如连接断开),
-  // 不复位的话之后所有 Append/Generate 都会报 "Session in Terminated state"
+  // 复位可能挂起的终止标志: RequestStop() 可能在空闲时被调用
   try {
     impl.generator->SetRuntimeOption("terminate_session", "0");
   } catch (const std::exception& e) {
@@ -164,6 +155,17 @@ Result<void> GenAiLlm::ResetSession() {
     return Fail(ErrorCode::kGenerationFailed, "清空对话失败: {}", e.what());
   }
   return {};
+}
+
+Result<void> GenAiLlm::RestartSession(std::string_view system_prompt) {
+  try {
+    impl_->generator->SetRuntimeOption("terminate_session", "0");
+    impl_->generator = OgaGenerator::Create(*impl_->model, *impl_->params);
+    impl_->system_token_count = 0;
+  } catch (const std::exception& e) {
+    return Fail(ErrorCode::kGenerationFailed, "重建会话失败: {}", e.what());
+  }
+  return StartSession(system_prompt);
 }
 
 const LlmTurnStats& GenAiLlm::last_stats() const { return impl_->stats; }

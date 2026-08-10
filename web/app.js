@@ -1,39 +1,36 @@
 "use strict";
 
-// ============ 元素引用 ============
 const chatEl = document.getElementById("chat");
 const inputEl = document.getElementById("input");
 const sendBtn = document.getElementById("btn-send");
 const stopBtn = document.getElementById("btn-stop");
 const resetBtn = document.getElementById("btn-reset");
 const micBtn = document.getElementById("btn-mic");
+const roleSelect = document.getElementById("role-select");
 const connDot = document.getElementById("conn-dot");
 const modelNameEl = document.getElementById("model-name");
 const welcomeEl = document.getElementById("welcome");
 const statusEl = document.getElementById("voice-status");
 
-// ============ 状态 ============
 let ws = null;
-let generating = false;    // 正在等待/接收 LLM 输出
-let voiceTurn = false;     // 当前轮由语音发起(结束以 tts_end 为准)
-let currentBubble = null;  // 正在流式追加的助手气泡
+let generating = false;
+let voiceTurn = false;
+let currentBubble = null;
 let reconnectDelay = 500;
+let ignoreRoleChange = false;
 
 let voiceAvailable = false;
 let ttsSampleRate = 44100;
 
-// 麦克风
 let micOn = false;
 let micCtx = null;
 let micStream = null;
 let micNode = null;
 
-// 播放队列
 let playCtx = null;
 let nextPlayTime = 0;
 let activeSources = [];
 
-// ============ WebSocket ============
 function connect() {
   ws = new WebSocket(`ws://${location.host}/ws`);
   ws.binaryType = "arraybuffer";
@@ -64,6 +61,7 @@ function connect() {
         voiceAvailable = msg.voice;
         ttsSampleRate = msg.tts_sample_rate || 44100;
         micBtn.classList.toggle("hidden", !voiceAvailable);
+        fillRoles(msg.roles || [], msg.role);
         break;
       case "llm_delta":
         appendDelta(msg.text);
@@ -71,25 +69,50 @@ function connect() {
       case "llm_end":
         finishGeneration(msg);
         break;
+      case "tool_result":
+        addNotice(`🔧 ${msg.tool}`);
+        break;
       case "mic_ready":
-        setStatus("聆听中…", "listening");
+        setStatus("聆听中…(说话可打断)", "listening");
         break;
       case "speech_start":
         setStatus("正在说话…", "speech");
         break;
       case "asr_text":
+        // 打断后开启新一轮: 清掉未完成的助手气泡
+        if (currentBubble) {
+          currentBubble.classList.remove("generating");
+          currentBubble = null;
+        }
         addMessage("user", msg.text, "🎤");
         setGenerating(true);
         voiceTurn = true;
         setStatus("思考中…", "thinking");
         break;
+      case "interrupt":
+        stopPlayback();
+        if (currentBubble) {
+          currentBubble.classList.remove("generating");
+          const bubble = currentBubble.querySelector(".bubble");
+          if (bubble && !bubble.textContent.trim()) currentBubble.remove();
+          currentBubble = null;
+        }
+        voiceTurn = false;
+        setGenerating(false);
+        setStatus(micOn ? "聆听中…(说话可打断)" : "", micOn ? "listening" : "");
+        addNotice("已打断");
+        break;
       case "tts_end":
         voiceTurn = false;
         setGenerating(false);
-        setStatus(micOn ? "聆听中…" : "", micOn ? "listening" : "");
+        setStatus(micOn ? "聆听中…(说话可打断)" : "", micOn ? "listening" : "");
         break;
       case "reset_done":
-        addNotice("对话已清空");
+        clearChat();
+        addNotice("已开始新对话");
+        break;
+      case "role_changed":
+        addNotice(`已切换角色: ${msg.name}`);
         break;
       case "error":
         addNotice(`出错: ${msg.message}`);
@@ -99,14 +122,24 @@ function connect() {
   };
 }
 
-// ============ TTS 播放 ============
+function fillRoles(roles, activeId) {
+  ignoreRoleChange = true;
+  roleSelect.innerHTML = "";
+  for (const role of roles) {
+    const opt = document.createElement("option");
+    opt.value = role.id;
+    opt.textContent = role.name;
+    if (role.id === activeId) opt.selected = true;
+    roleSelect.appendChild(opt);
+  }
+  ignoreRoleChange = false;
+}
+
 function handleBinaryFrame(arrayBuffer) {
   const view = new DataView(arrayBuffer);
   if (view.byteLength <= 4 || view.getUint8(0) !== 0x02) return;
-
-  const pcm = new Int16Array(arrayBuffer, 4);
-  playPcm(pcm);
-  setStatus("回答播报中…", "speaking");
+  playPcm(new Int16Array(arrayBuffer, 4));
+  setStatus("回答播报中…(说话可打断)", "speaking");
 }
 
 function playPcm(int16) {
@@ -135,19 +168,18 @@ function playPcm(int16) {
 
 function stopPlayback() {
   for (const source of activeSources) {
-    try { source.stop(); } catch { /* 已结束 */ }
+    try { source.stop(); } catch { /* already ended */ }
   }
   activeSources = [];
   nextPlayTime = 0;
 }
 
-// ============ 麦克风 ============
 async function startMic() {
   if (!voiceAvailable || micOn) return;
   try {
     micStream = await navigator.mediaDevices.getUserMedia({
       audio: {
-        echoCancellation: true,   // 回声消除: 避免拾到 TTS 播报
+        echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
         channelCount: 1,
@@ -196,15 +228,22 @@ function sendAudioFrame(int16) {
 
 micBtn.addEventListener("click", () => (micOn ? stopMic() : startMic()));
 
-// ============ 状态条 ============
 function setStatus(text, kind) {
   statusEl.textContent = text;
   statusEl.dataset.kind = kind || "";
 }
 
-// ============ 消息渲染 ============
 function hideWelcome() {
   if (welcomeEl) welcomeEl.classList.add("hidden");
+}
+
+function clearChat() {
+  chatEl.querySelectorAll(".msg, .notice").forEach((el) => el.remove());
+  if (welcomeEl) {
+    welcomeEl.classList.remove("hidden");
+    chatEl.prepend(welcomeEl);
+  }
+  currentBubble = null;
 }
 
 function scrollToBottom() {
@@ -246,24 +285,23 @@ function appendDelta(text) {
 function finishGeneration(stats) {
   if (currentBubble) {
     currentBubble.classList.remove("generating");
-    const meta = document.createElement("div");
-    meta.className = "meta";
-    meta.textContent =
-      `${stats.new_tokens} tokens · 首字 ${stats.first_token_seconds.toFixed(2)}s` +
-      ` · ${stats.tokens_per_second.toFixed(1)} tok/s`;
-    currentBubble.appendChild(meta);
+    if (stats.new_tokens > 0) {
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent =
+        `${stats.new_tokens} tokens · 首字 ${stats.first_token_seconds.toFixed(2)}s` +
+        ` · ${stats.tokens_per_second.toFixed(1)} tok/s`;
+      currentBubble.appendChild(meta);
+    }
   }
   currentBubble = null;
-  // 语音轮次还有 TTS 在播, 等 tts_end 再解除生成态
   if (!voiceTurn) setGenerating(false);
 }
 
-// ============ 交互 ============
 function setGenerating(value) {
   generating = value;
   sendBtn.classList.toggle("hidden", value);
   stopBtn.classList.toggle("hidden", !value);
-  inputEl.disabled = false;
 }
 
 function sendChat(text) {
@@ -287,14 +325,20 @@ stopBtn.addEventListener("click", () => {
   stopPlayback();
   voiceTurn = false;
   setGenerating(false);
-  setStatus(micOn ? "聆听中…" : "", micOn ? "listening" : "");
+  setStatus(micOn ? "聆听中…(说话可打断)" : "", micOn ? "listening" : "");
 });
 
 resetBtn.addEventListener("click", () => {
-  if (generating) return;
   if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "reset" }));
+    ws.send(JSON.stringify({ type: "new_session" }));
   }
+  stopPlayback();
+  setGenerating(false);
+});
+
+roleSelect.addEventListener("change", () => {
+  if (ignoreRoleChange || !ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: "set_role", id: roleSelect.value }));
 });
 
 inputEl.addEventListener("keydown", (event) => {
@@ -304,14 +348,12 @@ inputEl.addEventListener("keydown", (event) => {
   }
 });
 
-// 输入框高度自适应
 function autoResize() {
   inputEl.style.height = "auto";
   inputEl.style.height = `${Math.min(inputEl.scrollHeight, 140)}px`;
 }
 inputEl.addEventListener("input", autoResize);
 
-// 欢迎页快捷提问
 document.querySelectorAll(".chip").forEach((chip) => {
   chip.addEventListener("click", () => sendChat(chip.dataset.text));
 });

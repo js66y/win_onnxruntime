@@ -5,6 +5,7 @@
 
 #include "common/bounded_queue.h"
 #include "common/log.h"
+#include "dialog/tools.h"
 
 namespace echo::server {
 
@@ -19,14 +20,19 @@ struct ResetTask {
   std::function<void(bool ok)> done;
 };
 
-using Task = std::variant<ChatTask, ResetTask>;
+struct RestartTask {
+  std::string system_prompt;
+  std::function<void(bool ok)> done;
+};
+
+using Task = std::variant<ChatTask, ResetTask, RestartTask>;
 
 }  // namespace
 
 struct ChatService::Impl {
   std::unique_ptr<engine::GenAiLlm> llm;
   BoundedQueue<Task> queue{64};
-  std::jthread worker;  // 最后声明, 析构时最先停(先停线程再释放 llm)
+  std::jthread worker;
 
   void Run(std::stop_token stop) {
     while (auto task = queue.Pop(stop)) {
@@ -35,7 +41,6 @@ struct ChatService::Impl {
   }
 
   void Handle(ChatTask task) {
-    // generator 产出右值, 按值接收即移动构造
     for (std::string piece : llm->Chat(std::move(task.user_text))) {
       if (task.callbacks.on_delta) task.callbacks.on_delta(std::move(piece));
     }
@@ -47,6 +52,12 @@ struct ChatService::Impl {
     if (!reset) log::Error("{}", reset.error().message);
     if (task.done) task.done(reset.has_value());
   }
+
+  void Handle(RestartTask task) {
+    auto restart = llm->RestartSession(task.system_prompt);
+    if (!restart) log::Error("{}", restart.error().message);
+    if (task.done) task.done(restart.has_value());
+  }
 };
 
 ChatService::ChatService() : impl_(std::make_unique<Impl>()) {}
@@ -54,7 +65,6 @@ ChatService::ChatService() : impl_(std::make_unique<Impl>()) {}
 ChatService::~ChatService() {
   if (impl_ && impl_->worker.joinable()) {
     impl_->worker.request_stop();
-    // 打断可能正在进行的生成, 让 Pop/Chat 尽快返回
     impl_->llm->RequestStop();
   }
 }
@@ -63,7 +73,11 @@ Result<std::unique_ptr<ChatService>> ChatService::Create(
     const AppConfig& config) {
   auto llm = engine::GenAiLlm::Create(config.llm);
   if (!llm) return std::unexpected(llm.error());
-  if (auto started = (*llm)->StartSession(config.system_prompt); !started) {
+
+  // 默认角色 system prompt + 本地工具说明
+  dialog::ToolRegistry tools;
+  std::string prompt = config.ActiveSystemPrompt() + "\n" + tools.PromptHint();
+  if (auto started = (*llm)->StartSession(prompt); !started) {
     return std::unexpected(started.error());
   }
 
@@ -85,6 +99,13 @@ void ChatService::SubmitChat(std::string user_text, Callbacks callbacks) {
 void ChatService::SubmitReset(std::function<void(bool ok)> done) {
   impl_->queue.Push(ResetTask{std::move(done)},
                     impl_->worker.get_stop_token());
+}
+
+void ChatService::SubmitRestart(std::string system_prompt,
+                                std::function<void(bool ok)> done) {
+  impl_->queue.Push(
+      RestartTask{std::move(system_prompt), std::move(done)},
+      impl_->worker.get_stop_token());
 }
 
 void ChatService::RequestStop() { impl_->llm->RequestStop(); }

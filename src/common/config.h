@@ -2,6 +2,8 @@
 
 #include <filesystem>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "common/error.h"
 
@@ -9,48 +11,51 @@ namespace echo {
 
 struct LlmConfig {
   std::filesystem::path model_dir;
-  int max_length = 4096;   // 上下文总 token 上限(含提示词)
+  int max_length = 4096;
   bool do_sample = true;
   float temperature = 0.7f;
   float top_p = 0.8f;
-  bool disable_thinking = true;  // 关闭 Qwen3 思考模式
+  bool disable_thinking = true;
 };
 
-// SenseVoice 离线识别
 struct AsrConfig {
   std::filesystem::path model;
   std::filesystem::path tokens;
   int num_threads = 2;
-  std::string language = "auto";  // auto / zh / en / ja / ko / yue
-  bool use_itn = true;            // 逆文本正规化(数字、日期等)
+  std::string language = "auto";
+  bool use_itn = true;
 };
 
-// vits(melo-tts)离线合成
 struct TtsConfig {
   std::filesystem::path model;
   std::filesystem::path lexicon;
   std::filesystem::path tokens;
-  std::filesystem::path dict_dir;  // jieba 词典目录(新版为兼容字段)
-  int num_threads = 4;  // TTS 是首响应瓶颈, 默认多开几条线程
+  std::filesystem::path dict_dir;
+  int num_threads = 4;
   int speaker_id = 0;
   float speed = 1.0f;
 };
 
-// silero VAD
 struct VadConfig {
   std::filesystem::path model;
   float threshold = 0.5f;
-  float min_silence_seconds = 0.3f;  // 越短端到端越快, 太短易切碎
+  float min_silence_seconds = 0.3f;
   float min_speech_seconds = 0.25f;
   float max_speech_seconds = 20.0f;
   int sample_rate = 16000;
 };
 
-// HTTP/WebSocket 服务
 struct ServerConfig {
   std::string host = "127.0.0.1";
   int port = 8080;
-  std::filesystem::path web_root;  // 前端静态文件目录, 默认配置文件旁的 web/
+  std::filesystem::path web_root;
+  std::filesystem::path db_path;  // SQLite, 默认 data/echo.db
+};
+
+struct RoleConfig {
+  std::string id;
+  std::string name;
+  std::string system_prompt;
 };
 
 struct AppConfig {
@@ -59,15 +64,18 @@ struct AppConfig {
   TtsConfig tts;
   VadConfig vad;
   ServerConfig server;
+  std::vector<RoleConfig> roles;
+  std::string active_role = "echo";
+  // 兼容旧配置: 无 roles 时用它作为默认角色提示词
   std::string system_prompt =
       "你是\"回声\"(Echo), 一个完全离线运行的中文语音助手。"
       "回答保持简短、口语化。";
 
-  // 从指定 JSON 文件加载; 相对路径(如模型路径)相对配置文件所在目录解析
-  [[nodiscard]] static Result<AppConfig> LoadFile(const std::filesystem::path& file);
+  [[nodiscard]] const RoleConfig* FindRole(std::string_view id) const;
+  [[nodiscard]] std::string ActiveSystemPrompt() const;
 
-  // 依次在 当前目录 / exe 目录 / exe 上三级目录(build/bin/Release -> 仓库根)
-  // 查找 echo.json
+  [[nodiscard]] static Result<AppConfig> LoadFile(
+      const std::filesystem::path& file);
   [[nodiscard]] static Result<AppConfig> LoadDefault();
 };
 
