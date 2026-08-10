@@ -183,9 +183,9 @@ int RunVoiceFile(const echo::AppConfig& config,
   return 0;
 }
 
-// Web 服务模式(M3): 浏览器聊天界面
+// Web 服务模式(M3/M4): 浏览器聊天界面 + 实时语音
 int RunServer(const echo::AppConfig& config) {
-  std::cout << "正在加载模型 " << config.llm.model_dir.filename().string()
+  std::cout << "正在加载 LLM " << config.llm.model_dir.filename().string()
             << " ..." << std::flush;
   auto chat = echo::server::ChatService::Create(config);
   if (!chat) {
@@ -193,10 +193,21 @@ int RunServer(const echo::AppConfig& config) {
     echo::log::Error("{}", chat.error().message);
     return 1;
   }
-  std::cout << " 完成\n";
+  std::cout << " 完成\n正在加载语音模型(VAD/ASR/TTS)..." << std::flush;
+
+  // 语音模型缺失时不致命: 退化为纯文字聊天
+  std::unique_ptr<echo::server::SpeechService> speech;
+  if (auto created = echo::server::SpeechService::Create(config)) {
+    speech = std::move(*created);
+    std::cout << " 完成\n";
+  } else {
+    std::cout << "\n";
+    echo::log::Warn("语音功能不可用: {}", created.error().message);
+  }
 
   boost::asio::io_context ioc;
-  if (auto started = echo::server::StartHttpServer(ioc, config, **chat);
+  if (auto started = echo::server::StartHttpServer(ioc, config, **chat,
+                                                   speech.get());
       !started) {
     echo::log::Error("{}", started.error().message);
     return 1;

@@ -80,6 +80,22 @@ std::generator<std::string> GenAiLlm::Chat(std::string user_text) {
   auto& impl = *impl_;
   impl.stats = {};
 
+  // 复位可能挂起的终止标志: RequestStop() 可能在没有生成进行时被调用
+  // (如连接断开时), 不复位的话之后所有请求都会报 "Session in Terminated state"
+  try {
+    impl.generator->SetRuntimeOption("terminate_session", "0");
+  } catch (const std::exception& e) {
+    log::Warn("复位终止标志失败: {}", e.what());
+  }
+
+  // 复位终止标志: RequestStop 可能在空闲期被调用(如连接断开),
+  // 不复位的话之后所有 Append/Generate 都会报 "Session in Terminated state"
+  try {
+    impl.generator->SetRuntimeOption("terminate_session", "0");
+  } catch (const std::exception& e) {
+    log::Warn("复位终止标志失败: {}", e.what());
+  }
+
   auto prompt = std::format(
       "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n", user_text);
   if (impl.config.disable_thinking) {

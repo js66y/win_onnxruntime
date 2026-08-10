@@ -14,6 +14,7 @@ add_library(echo_core STATIC
   engine/vad/silero_vad.cpp
   server/chat_service.cpp
   server/http_server.cpp
+  server/speech_service.cpp
   server/ws_session.cpp
 )
 

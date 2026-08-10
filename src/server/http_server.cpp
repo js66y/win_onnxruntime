@@ -93,7 +93,7 @@ http::message_generator HandleRequest(http::request<http::string_body> req,
 // 一条 HTTP 连接: 循环处理请求; 遇到 WebSocket 升级则移交 WsSession
 asio::awaitable<void> Session(tcp::socket socket,
                               std::filesystem::path web_root,
-                              ChatService& chat) {
+                              ChatService& chat, SpeechService* speech) {
   beast::tcp_stream stream(std::move(socket));
   beast::flat_buffer buffer;
 
@@ -105,7 +105,7 @@ asio::awaitable<void> Session(tcp::socket socket,
 
       if (beast::websocket::is_upgrade(req)) {
         // WsSession 通过 shared_ptr 自持生命周期
-        std::make_shared<WsSession>(std::move(stream), chat)
+        std::make_shared<WsSession>(std::move(stream), chat, speech)
             ->Run(std::move(req));
         co_return;
       }
@@ -131,7 +131,7 @@ asio::awaitable<void> Session(tcp::socket socket,
 
 asio::awaitable<void> Listen(tcp::acceptor acceptor,
                              std::filesystem::path web_root,
-                             ChatService& chat) {
+                             ChatService& chat, SpeechService* speech) {
   for (;;) {
     auto [ec, socket] =
         co_await acceptor.async_accept(asio::as_tuple(asio::use_awaitable));
@@ -141,7 +141,7 @@ asio::awaitable<void> Listen(tcp::acceptor acceptor,
       continue;
     }
     asio::co_spawn(acceptor.get_executor(),
-                   Session(std::move(socket), web_root, chat),
+                   Session(std::move(socket), web_root, chat, speech),
                    asio::detached);
   }
 }
@@ -149,7 +149,7 @@ asio::awaitable<void> Listen(tcp::acceptor acceptor,
 }  // namespace
 
 Result<void> StartHttpServer(asio::io_context& ioc, const AppConfig& config,
-                             ChatService& chat) {
+                             ChatService& chat, SpeechService* speech) {
   boost::system::error_code ec;
   const auto address = asio::ip::make_address(config.server.host, ec);
   if (ec) {
@@ -174,9 +174,10 @@ Result<void> StartHttpServer(asio::io_context& ioc, const AppConfig& config,
               config.server.web_root.string());
   }
 
-  asio::co_spawn(ioc,
-                 Listen(std::move(acceptor), config.server.web_root, chat),
-                 asio::detached);
+  asio::co_spawn(
+      ioc,
+      Listen(std::move(acceptor), config.server.web_root, chat, speech),
+      asio::detached);
   return {};
 }
 

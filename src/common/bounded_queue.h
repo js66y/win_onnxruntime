@@ -35,6 +35,17 @@ class BoundedQueue {
     return true;
   }
 
+  // 非阻塞入队: 满则立即返回 false(实时音频等宁可丢帧也不能阻塞的场景)
+  bool TryPush(T value) {
+    {
+      std::scoped_lock lock(mutex_);
+      if (items_.size() >= capacity_) return false;
+      items_.push_back(std::move(value));
+    }
+    not_empty_.notify_one();
+    return true;
+  }
+
   // 队列空时阻塞等待; stop 请求到达时返回 nullopt
   std::optional<T> Pop(std::stop_token stop = {}) {
     std::unique_lock lock(mutex_);
@@ -54,6 +65,15 @@ class BoundedQueue {
   [[nodiscard]] size_t Size() const {
     std::scoped_lock lock(mutex_);
     return items_.size();
+  }
+
+  // 丢弃所有排队元素(打断场景); 正在被消费的元素不受影响
+  void Clear() {
+    {
+      std::scoped_lock lock(mutex_);
+      items_.clear();
+    }
+    not_full_.notify_all();
   }
 
  private:
