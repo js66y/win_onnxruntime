@@ -31,7 +31,7 @@ struct TtsConfig {
   std::filesystem::path lexicon;
   std::filesystem::path tokens;
   std::filesystem::path dict_dir;  // jieba 词典目录(新版为兼容字段)
-  int num_threads = 2;
+  int num_threads = 4;  // TTS 是首响应瓶颈, 默认多开几条线程
   int speaker_id = 0;
   float speed = 1.0f;
 };
@@ -40,7 +40,7 @@ struct TtsConfig {
 struct VadConfig {
   std::filesystem::path model;
   float threshold = 0.5f;
-  float min_silence_seconds = 0.5f;
+  float min_silence_seconds = 0.3f;  // 越短端到端越快, 太短易切碎
   float min_speech_seconds = 0.25f;
   float max_speech_seconds = 20.0f;
   int sample_rate = 16000;

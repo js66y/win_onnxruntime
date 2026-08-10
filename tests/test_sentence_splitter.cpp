@@ -29,13 +29,34 @@ TEST(SentenceSplitterTest, HandlesStreamingDeltas) {
   if (auto tail = splitter.Flush(); !tail.empty()) {
     sentences.push_back(std::move(tail));
   }
-  ASSERT_EQ(sentences.size(), 2u);
-  EXPECT_EQ(sentences[0], "你好呀,很高兴认识你。");
-  EXPECT_EQ(sentences[1], "有什么我能帮忙的吗?");
+  // 首句在逗号处提前切出(降低首响应延迟), 之后按句末标点切
+  ASSERT_EQ(sentences.size(), 3u);
+  EXPECT_EQ(sentences[0], "你好呀,");
+  EXPECT_EQ(sentences[1], "很高兴认识你。");
+  EXPECT_EQ(sentences[2], "有什么我能帮忙的吗?");
+}
+
+TEST(SentenceSplitterTest, FirstSentenceCutsEarlyAtComma) {
+  SentenceSplitter splitter;
+  auto out = splitter.Feed("好的,我来给你详细介绍一下,这个问题分三个方面。");
+  ASSERT_EQ(out.size(), 2u);
+  EXPECT_EQ(out[0], "好的,");  // 首句: 逗号即切, 尽快出声
+  // 第二句回到正常规则: 逗号不切, 直到句号
+  EXPECT_EQ(out[1], "我来给你详细介绍一下,这个问题分三个方面。");
+}
+
+TEST(SentenceSplitterTest, FirstSentenceCutsAtFullwidthComma) {
+  SentenceSplitter splitter;
+  auto out = splitter.Feed("好的，我来解释一下。");
+  ASSERT_EQ(out.size(), 2u);
+  EXPECT_EQ(out[0], "好的，");
+  EXPECT_EQ(out[1], "我来解释一下。");
 }
 
 TEST(SentenceSplitterTest, TooShortSentenceWaitsForMore) {
-  SentenceSplitter splitter(/*min_bytes=*/12);
+  // 关闭首句激进切分, 专门验证普通 min_bytes 下限
+  SentenceSplitter splitter(/*min_bytes=*/12, /*soft_max_bytes=*/90,
+                            /*first_min_bytes=*/12);
   EXPECT_TRUE(splitter.Feed("好。").empty());  // 6 字节 < 12, 不切
   auto out = splitter.Feed("我知道了。");
   ASSERT_EQ(out.size(), 1u);
@@ -60,6 +81,7 @@ TEST(SentenceSplitterTest, FlushReturnsRemainder) {
 TEST(StripForTtsTest, RemovesMarkdownMarkers) {
   EXPECT_EQ(StripForTts("**你好** `代码` # 标题"), "你好 代码  标题");
   EXPECT_EQ(StripForTts("正常文本。"), "正常文本。");
+  EXPECT_EQ(StripForTts("“回声”（Echo）"), "回声Echo");
 }
 
 TEST(StripForTtsTest, ConvertsNumbersToChinese) {

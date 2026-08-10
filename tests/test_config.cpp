@@ -58,7 +58,7 @@ TEST_F(ConfigTest, KeepsDefaultsForMissingFields) {
   EXPECT_EQ(config->llm.max_length, 4096);
   EXPECT_TRUE(config->llm.disable_thinking);
   EXPECT_EQ(config->asr.language, "auto");
-  EXPECT_FLOAT_EQ(config->vad.min_silence_seconds, 0.5f);
+  EXPECT_FLOAT_EQ(config->vad.min_silence_seconds, 0.3f);
   EXPECT_FALSE(config->system_prompt.empty());
 }
 

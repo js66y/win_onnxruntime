@@ -19,14 +19,14 @@
     "lexicon": "models/vits-melo-tts-zh_en/lexicon.txt",
     "tokens": "models/vits-melo-tts-zh_en/tokens.txt",
     "dict_dir": "models/vits-melo-tts-zh_en/dict",
-    "num_threads": 2,
+    "num_threads": 4,
     "speaker_id": 0,
     "speed": 1.0
   },
   "vad": {
     "model": "models/silero_vad.onnx",
     "threshold": 0.5,
-    "min_silence_seconds": 0.5,
+    "min_silence_seconds": 0.3,
     "min_speech_seconds": 0.25,
     "max_speech_seconds": 20.0,
     "sample_rate": 16000
