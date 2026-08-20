@@ -1,14 +1,16 @@
-#include <windows.h>
-
-#include <shellapi.h>  // ShellExecuteW(WIN32_LEAN_AND_MEAN 不包含它)
-
 #include <atomic>
 #include <csignal>
+#include <cstdlib>
 #include <filesystem>
 #include <format>
 #include <iostream>
 #include <string>
 #include <vector>
+
+#if defined(_WIN32)
+#include <windows.h>
+#include <shellapi.h>  // ShellExecuteW(WIN32_LEAN_AND_MEAN 不包含它)
+#endif
 
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/signal_set.hpp>
@@ -94,9 +96,9 @@ int RunInteractive(const echo::AppConfig& config) {
     }
 
     std::cout << "\x1b[33m回声>\x1b[0m " << std::flush;
-    for (const std::string& piece : (*llm)->Chat(line)) {
+    (*llm)->Chat(line, [](std::string piece) {
       std::cout << piece << std::flush;
-    }
+    });
     PrintStats((*llm)->last_stats());
   }
 
@@ -157,10 +159,10 @@ int RunVoiceFile(const echo::AppConfig& config,
 
   std::string reply;
   std::cout << "\x1b[33m回声>\x1b[0m " << std::flush;
-  for (const std::string& piece : (*llm)->Chat(recognized->text)) {
+  (*llm)->Chat(recognized->text, [&](std::string piece) {
     std::cout << piece << std::flush;
     reply += piece;
-  }
+  });
   PrintStats((*llm)->last_stats());
   g_llm.store(nullptr);
 
@@ -238,9 +240,15 @@ int RunServer(const echo::AppConfig& config) {
             << std::flush;  // stdout 重定向时也立即可见
 
   // 自动打开浏览器
+#if defined(_WIN32)
   const std::wstring wide_url(url.begin(), url.end());
   ShellExecuteW(nullptr, L"open", wide_url.c_str(), nullptr, nullptr,
                 SW_SHOWNORMAL);
+#elif defined(__APPLE__)
+  std::system(("open " + url + " >/dev/null 2>&1 &").c_str());
+#else
+  std::system(("xdg-open " + url + " >/dev/null 2>&1 &").c_str());
+#endif
 
   ioc.run();
   std::cout << "服务已停止\n";
@@ -249,11 +257,11 @@ int RunServer(const echo::AppConfig& config) {
 
 void PrintUsage() {
   std::cout << "用法:\n"
-            << "  echo.exe [config.json]              交互式文字聊天\n"
-            << "  echo.exe --serve [--config config.json]\n"
-            << "                                      Web 服务(浏览器聊天界面)\n"
-            << "  echo.exe --voice <in.wav> [out.wav] [--config config.json]\n"
-            << "                                      语音问答(wav 进 wav 出)\n";
+            << "  echo [config.json]                 交互式文字聊天\n"
+            << "  echo --serve [--config config.json]\n"
+            << "                                     Web 服务(浏览器聊天界面)\n"
+            << "  echo --voice <in.wav> [out.wav] [--config config.json]\n"
+            << "                                     语音问答(wav 进 wav 出)\n";
 }
 
 }  // namespace

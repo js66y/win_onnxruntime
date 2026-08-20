@@ -41,9 +41,9 @@ struct ChatService::Impl {
   }
 
   void Handle(ChatTask task) {
-    for (std::string piece : llm->Chat(std::move(task.user_text))) {
+    llm->Chat(std::move(task.user_text), [&](std::string piece) {
       if (task.callbacks.on_delta) task.callbacks.on_delta(std::move(piece));
-    }
+    });
     if (task.callbacks.on_done) task.callbacks.on_done(llm->last_stats());
   }
 

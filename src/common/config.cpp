@@ -1,19 +1,43 @@
 #include "common/config.h"
 
-#include <windows.h>
-
 #include <fstream>
 
 #include <nlohmann/json.hpp>
+
+#if defined(_WIN32)
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#include <climits>
+#else
+#include <unistd.h>
+#include <climits>
+#endif
 
 namespace echo {
 
 namespace {
 
 std::filesystem::path ExecutableDir() {
+#if defined(_WIN32)
   wchar_t buffer[MAX_PATH]{};
   GetModuleFileNameW(nullptr, buffer, MAX_PATH);
   return std::filesystem::path(buffer).parent_path();
+#elif defined(__APPLE__)
+  char buffer[PATH_MAX]{};
+  uint32_t size = sizeof(buffer);
+  if (_NSGetExecutablePath(buffer, &size) != 0) return {};
+  std::error_code ec;
+  auto canonical = std::filesystem::canonical(buffer, ec);
+  if (ec) canonical = std::filesystem::path(buffer);
+  return canonical.parent_path();
+#else
+  char buffer[PATH_MAX]{};
+  const ssize_t n = readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);
+  if (n <= 0) return {};
+  buffer[n] = '\0';
+  return std::filesystem::path(buffer).parent_path();
+#endif
 }
 
 std::filesystem::path ResolvePath(const std::filesystem::path& base,

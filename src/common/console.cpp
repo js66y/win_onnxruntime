@@ -1,15 +1,19 @@
 #include "common/console.h"
 
-#include <windows.h>
-
-#include <io.h>
-
 #include <cstdio>
 #include <iostream>
+
+#if defined(_WIN32)
+#include <windows.h>
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 
 namespace echo::console {
 
 void Init() {
+#if defined(_WIN32)
   SetConsoleOutputCP(CP_UTF8);
   SetConsoleCP(CP_UTF8);
 
@@ -18,9 +22,13 @@ void Init() {
   if (GetConsoleMode(out, &mode)) {
     SetConsoleMode(out, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
   }
+#else
+  // POSIX 终端默认 UTF-8, ANSI 颜色也天然可用, 无需额外设置
+#endif
 }
 
 std::optional<std::string> ReadLineUtf8() {
+#if defined(_WIN32)
   // 交互式控制台: 必须用宽字符 API 读取, 否则中文会按 ANSI 代码页乱码
   if (_isatty(_fileno(stdin))) {
     HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
@@ -48,8 +56,9 @@ std::optional<std::string> ReadLineUtf8() {
                         utf8.data(), size, nullptr, nullptr);
     return utf8;
   }
+#endif
 
-  // 管道/重定向: 假定输入本身就是 UTF-8
+  // POSIX 终端 / 管道 / 重定向: 假定输入本身就是 UTF-8
   std::string line;
   if (!std::getline(std::cin, line)) return std::nullopt;
   if (!line.empty() && line.back() == '\r') line.pop_back();

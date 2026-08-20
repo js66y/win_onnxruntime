@@ -1,6 +1,6 @@
 #pragma once
 
-#include <generator>
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -40,9 +40,12 @@ class GenAiLlm {
   // 以系统提示词开启会话(编码后进入 KV cache)
   [[nodiscard]] Result<void> StartSession(std::string_view system_prompt);
 
-  // 流式对话: 逐片产出模型回复。生成中途出错或被打断时,
-  // 会自动回退到本轮之前的会话状态并结束产出。
-  [[nodiscard]] std::generator<std::string> Chat(std::string user_text);
+  // 流式对话: 每生成一段文本就通过回调交出。回调在调用线程内同步执行。
+  // 生成中途出错或被打断时, 会自动回退到本轮之前的会话状态并提前结束。
+  // 用回调而非 std::generator<> 是为了兼容 Apple libc++
+  // (Apple SDK 目前尚未提供 C++23 <generator>)。
+  using OnPiece = std::function<void(std::string)>;
+  void Chat(std::string user_text, const OnPiece& on_piece);
 
   // 请求终止当前生成(线程安全, 可在信号处理器中调用)
   void RequestStop();

@@ -76,7 +76,7 @@ Result<void> GenAiLlm::StartSession(std::string_view system_prompt) {
   return {};
 }
 
-std::generator<std::string> GenAiLlm::Chat(std::string user_text) {
+void GenAiLlm::Chat(std::string user_text, const OnPiece& on_piece) {
   auto& impl = *impl_;
   impl.stats = {};
 
@@ -97,7 +97,7 @@ std::generator<std::string> GenAiLlm::Chat(std::string user_text) {
   const size_t tokens_before_turn = impl.generator->TokenCount();
   if (auto appended = impl.AppendText(prompt); !appended) {
     log::Error("{}", appended.error().message);
-    co_return;
+    return;
   }
   impl.stats.prompt_tokens =
       static_cast<int>(impl.generator->TokenCount() - tokens_before_turn);
@@ -133,9 +133,7 @@ std::generator<std::string> GenAiLlm::Chat(std::string user_text) {
       break;
     }
     impl.stats.new_tokens += 1;
-    // co_yield 放在 try/catch 之外: 协程禁止在 catch 处理器内挂起,
-    // 且这里的挂起点不该被上面的异常处理逻辑覆盖
-    co_yield std::move(piece);
+    if (on_piece) on_piece(std::move(piece));
   }
   impl.stats.total_seconds = elapsed();
 }

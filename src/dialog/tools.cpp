@@ -1,7 +1,5 @@
 #include "dialog/tools.h"
 
-#include <windows.h>
-
 #include <chrono>
 #include <cmath>
 #include <cctype>
@@ -9,6 +7,17 @@
 #include <optional>
 #include <regex>
 #include <sstream>
+
+#if defined(_WIN32)
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <sys/sysctl.h>
+#include <sys/types.h>
+#include <unistd.h>
+#else
+#include <sys/sysinfo.h>
+#include <unistd.h>
+#endif
 
 namespace echo::dialog {
 
@@ -45,7 +54,11 @@ std::string NowString() {
   const auto now = clock::now();
   const auto time = clock::to_time_t(now);
   std::tm tm{};
+#if defined(_WIN32)
   localtime_s(&tm, &time);
+#else
+  localtime_r(&time, &tm);
+#endif
   constexpr const char* kWeekdays[] = {"日", "一", "二", "三",
                                        "四", "五", "六"};
   return std::format("现在是 {:04}-{:02}-{:02} 星期{} {:02}:{:02}:{:02}",
@@ -162,6 +175,7 @@ std::string FormatNumber(double value) {
 }
 
 std::string SysInfoString() {
+#if defined(_WIN32)
   MEMORYSTATUSEX mem{};
   mem.dwLength = sizeof(mem);
   GlobalMemoryStatusEx(&mem);
@@ -173,6 +187,32 @@ std::string SysInfoString() {
   return std::format(
       "这台机器有 {} 个逻辑处理器, 内存共 {:.1f} GB, 当前可用 {:.1f} GB。",
       sys.dwNumberOfProcessors, total_gb, avail_gb);
+#elif defined(__APPLE__)
+  const long cpus = sysconf(_SC_NPROCESSORS_ONLN);
+  uint64_t total_bytes = 0;
+  size_t len = sizeof(total_bytes);
+  sysctlbyname("hw.memsize", &total_bytes, &len, nullptr, 0);
+  // macOS 没有直接的"可用内存"概念(vm_stat 更接近), 简单起见只报总量
+  const double total_gb = total_bytes / (1024.0 * 1024.0 * 1024.0);
+  return std::format("这台机器有 {} 个逻辑处理器, 内存共 {:.1f} GB。", cpus,
+                     total_gb);
+#else
+  const long cpus = sysconf(_SC_NPROCESSORS_ONLN);
+  struct sysinfo info{};
+  const double total_gb =
+      (sysinfo(&info) == 0)
+          ? info.totalram * static_cast<double>(info.mem_unit) /
+                (1024.0 * 1024.0 * 1024.0)
+          : 0.0;
+  const double avail_gb =
+      (info.mem_unit > 0)
+          ? info.freeram * static_cast<double>(info.mem_unit) /
+                (1024.0 * 1024.0 * 1024.0)
+          : 0.0;
+  return std::format(
+      "这台机器有 {} 个逻辑处理器, 内存共 {:.1f} GB, 当前空闲 {:.1f} GB。",
+      cpus, total_gb, avail_gb);
+#endif
 }
 
 }  // namespace

@@ -23,7 +23,11 @@ inline void Write(Level level, std::string_view message) {
   const auto now = std::chrono::system_clock::now();
   const auto time = std::chrono::system_clock::to_time_t(now);
   std::tm tm{};
+#if defined(_WIN32)
   localtime_s(&tm, &time);
+#else
+  localtime_r(&time, &tm);
+#endif
 
   const auto line =
       std::format("[{:02}:{:02}:{:02}] [{}] {}\n", tm.tm_hour, tm.tm_min,

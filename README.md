@@ -17,7 +17,7 @@
 
 | 模块 | 选型 |
 |------|------|
-| 语言 / 构建 | C++23 · CMake · MSVC |
+| 语言 / 构建 | C++23 · CMake（Ninja / MSVC / Make） |
 | 网络 | Boost.Asio + Beast（HTTP + WebSocket） |
 | LLM | onnxruntime-genai · Qwen3-0.6B INT4（CPU） |
 | ASR | sherpa-onnx · SenseVoice Small int8 |
@@ -29,8 +29,12 @@
 
 ## 环境要求
 
-- Windows 10/11 x64
-- Visual Studio 2022/2026（含 C++ 桌面开发与 CMake）
+支持 **Windows / macOS / Linux**，仅需 CPU；平台需与所下载的 `onnxruntime-genai`、
+`sherpa-onnx` 预编译包架构对应（x64 或 arm64）。
+
+- Windows 10/11 x64：Visual Studio 2022/2026（含 C++ 桌面开发与 CMake）
+- macOS 13+（Apple Silicon / Intel）：`xcode-select --install`，`brew install cmake ninja`
+- Linux（Ubuntu 24.04 / Fedora 40+ 等）：`gcc-14`/`clang-18`+、`cmake`、`ninja`、`libsqlite3-dev`
 - Git + [Git LFS](https://git-lfs.com/)（下载模型需要）
 - 建议内存 ≥ 8 GB；首次加载模型会占用数 GB 磁盘
 
@@ -38,7 +42,7 @@
 
 ### 1. 克隆仓库
 
-```powershell
+```bash
 git clone https://github.com/JS66y/echo-assistant.git
 cd echo-assistant
 ```
@@ -47,57 +51,92 @@ cd echo-assistant
 
 `third_party/` 与 `models/` **不入库**，需自行准备（体积较大）。
 
-**语音模型（放入 `models/`）：**
+**LLM 与运行时（放入 `third_party/`）：**
 
-```powershell
-mkdir models
-cd models
+根据本机平台下载对应架构的预编译包并解压：
 
-# ASR: SenseVoice
-git clone --depth 1 https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17
+```bash
+mkdir -p third_party && cd third_party
 
-# TTS: MeloTTS 中英
-git clone --depth 1 https://huggingface.co/csukuangfj/vits-melo-tts-zh_en
+# onnxruntime-genai (二选一)
+# macOS arm64
+curl -L -o genai.tgz https://github.com/microsoft/onnxruntime-genai/releases/download/v0.15.2/onnxruntime-genai-0.15.2-osx-arm64.tar.gz
+# Linux x64
+# curl -L -o genai.tgz https://github.com/microsoft/onnxruntime-genai/releases/download/v0.15.2/onnxruntime-genai-0.15.2-linux-x64.tar.gz
+mkdir onnxruntime-genai && tar xzf genai.tgz -C onnxruntime-genai --strip-components=1 && rm genai.tgz
 
-# VAD: Silero
-# 从 sherpa-onnx 发布包或官方渠道获取 silero_vad.onnx，放到 models/silero_vad.onnx
+# sherpa-onnx (需与 onnxruntime 1.28 匹配)
+curl -L -o sherpa.tar.bz2 https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.6/sherpa-onnx-v1.13.6-onnxruntime-1.28.0-osx-arm64-shared.tar.bz2
+mkdir sherpa-onnx && tar xjf sherpa.tar.bz2 -C sherpa-onnx --strip-components=1 && rm sherpa.tar.bz2
+
 cd ..
 ```
 
-**LLM 与运行时（放入 `third_party/`）：**
+Windows 用户在同一 [release 页面](https://github.com/microsoft/onnxruntime-genai/releases)下载
+`win-x64.zip` 与对应的 `sherpa-onnx-*-win-x64-shared.tar.bz2`，同样解压到
+`third_party/onnxruntime-genai/` 与 `third_party/sherpa-onnx/`（保持 `include/` 与 `lib/` 结构）。
 
-- `third_party/onnxruntime-genai/`：预编译 include / lib / dll
-- `third_party/sherpa-onnx/`：预编译 include / lib / dll
-- `third_party/Qwen3-0.6B-ONNX-INT4-CPU/`：ONNX 量化对话模型
-- `third_party/boost-1.87.0-cmake.tar.xz`：构建时由 CMake 解压（也可按 `CMakeLists.txt` 说明自行下载）
-- `third_party/sqlite/`：SQLite 静态库（若工程已按此路径链接）
+Windows 若需要静态链接 SQLite，把 [SQLite Amalgamation](https://www.sqlite.org/download.html) 放到
+`third_party/sqlite/sqlite-amalgamation-<版本>/`；Mac/Linux 上 CMake 会直接找系统 SQLite3，无需此步。
 
-具体版本与目录布局需与本机 `CMakeLists.txt` / `src/CMakeLists.txt` 中的查找路径一致。
+Boost 会在 `cmake` configure 阶段自动下载 `boost-1.87.0-cmake.tar.xz`（也可
+预先手动放到 `third_party/` 加速）。
+
+**语音 / LLM 模型（放入 `models/` 与 `third_party/`）：**
+
+```bash
+mkdir -p models && cd models
+# ASR: SenseVoice
+git clone --depth 1 https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17
+# TTS: MeloTTS 中英
+git clone --depth 1 https://huggingface.co/csukuangfj/vits-melo-tts-zh_en
+# VAD: 从 sherpa-onnx release 或官方仓库获取 silero_vad.onnx 放到 models/silero_vad.onnx
+cd ..
+
+# LLM: Qwen3-0.6B INT4 CPU (示例路径, 见 echo.json 中 llm.model_dir)
+# 放到 third_party/Qwen3-0.6B-ONNX-INT4-CPU/, 需包含 genai_config.json 与相关权重
+```
 
 ### 3. 编译
 
-按本机 Visual Studio / CMake 安装路径，必要时编辑 `build_echo.bat` 中的 `VCVARS` 与 `CMAKE`，然后：
+**macOS / Linux（Ninja）：**
+
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+```
+
+产物在 `build/bin/echo` 与 `build/bin/echo_tests`，第三方 `.dylib` / `.so`
+会自动拷到同一目录，rpath 设置为 `@executable_path` / `$ORIGIN`。
+
+**Windows：**
 
 ```powershell
 .\build_echo.bat
 # 全量重建: .\build_echo.bat clean
 ```
 
-成功后得到：`build\bin\Release\echo.exe`
+或者手动跑 CMake：
+
+```powershell
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+cmake --build build --config Release --parallel
+```
+
+产物在 `build\bin\Release\echo.exe`。
 
 ### 4. 运行
 
 在仓库根目录运行（以便找到 `echo.json`、`web/`、`models/`）：
 
-```powershell
-# 网页语音助手（推荐）
+```bash
+# macOS / Linux
+./build/bin/echo --serve                              # Web 服务
+./build/bin/echo                                      # 命令行文字聊天
+./build/bin/echo --voice question.wav answer.wav     # wav 进 → wav 出
+
+# Windows
 .\build\bin\Release\echo.exe --serve
-
-# 命令行纯文字聊天
-.\build\bin\Release\echo.exe
-
-# 语音文件：wav 进 → 识别 → 回答 → wav 出
-.\build\bin\Release\echo.exe --voice question.wav answer.wav
 ```
 
 `--serve` 会启动 `http://127.0.0.1:8080/` 并尝试打开浏览器。按 `Ctrl+C` 退出。
@@ -148,9 +187,26 @@ TTS 当前为 MeloTTS：
 
 ## 测试
 
-```powershell
+```bash
+# macOS / Linux
+./build/bin/echo_tests
+
+# Windows
 .\build\bin\Release\echo_tests.exe
 ```
 
 缺少模型时相关用例会自动跳过。
 
+## 跨平台说明
+
+- 平台相关代码统一走 `#if defined(_WIN32) / __APPLE__ / __linux__`
+  条件编译；Windows 保留 `ReadConsoleW`、`ShellExecuteW`、
+  `MEMORYSTATUSEX` 等原生 API。
+- `src/engine/llm/genai_llm.h` 的 `Chat` 采用回调形式而非 `std::generator`，
+  因为 Apple libc++ (macOS 26 SDK 附带的 libc++ 21) 尚未附带
+  C++23 `<generator>` header。
+- 官方 `ort_genai.h` 里若干内联函数返回 `std::unique_ptr<OgaTensor>`
+  但 `OgaTensor` 定义在其后，MSVC 宽松、libc++/libstdc++ 严格。
+  CMake configure 阶段会对该 header 做**幂等补丁**（把 `OgaTensor`
+  提到 `OgaGenerator` 之前，并移除未使用的 `EncodeBatch`）——
+  详见 [src/CMakeLists.txt](src/CMakeLists.txt) 里 `ort_genai.h 幂等补丁` 一节。
