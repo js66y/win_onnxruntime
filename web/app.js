@@ -28,6 +28,8 @@ let micStream = null;
 let micNode = null;
 
 let playCtx = null;
+let playDest = null;      // TTS 通过 MediaStreamDestination -> WebRTC 回环 -> <audio>
+let playAudioEl = null;   // 承接回环下行的音频元素; 也是最终的扬声器输出
 let nextPlayTime = 0;
 let activeSources = [];
 
@@ -142,8 +144,41 @@ function handleBinaryFrame(arrayBuffer) {
   setStatus("回答播报中…(说话可打断)", "speaking");
 }
 
+async function ensurePlayback() {
+  if (playCtx) {
+    if (playCtx.state === "suspended") await playCtx.resume();
+    return;
+  }
+  playCtx = new AudioContext();
+
+  // WebRTC AEC 回环: 浏览器的回声消除只对 WebRTC 音频轨生效, 直接送到
+  // AudioContext.destination 的 TTS 对 AEC 是"看不见"的, 会被麦克风采到
+  // 形成回环。这里让 TTS 走 MediaStreamDestination -> RTCPeerConnection
+  // 环回一圈, 再作为远端流播放, AEC 就能拿到它作为参考信号扣除。
+  playDest = playCtx.createMediaStreamDestination();
+  const pcSend = new RTCPeerConnection();
+  const pcRecv = new RTCPeerConnection();
+  pcSend.onicecandidate = (e) => e.candidate && pcRecv.addIceCandidate(e.candidate);
+  pcRecv.onicecandidate = (e) => e.candidate && pcSend.addIceCandidate(e.candidate);
+  pcRecv.ontrack = (event) => {
+    playAudioEl = new Audio();
+    playAudioEl.autoplay = true;
+    playAudioEl.srcObject = event.streams[0];
+    playAudioEl.play().catch(() => { /* 用户手势前浏览器会拒绝, 忽略 */ });
+  };
+  for (const track of playDest.stream.getAudioTracks()) {
+    pcSend.addTrack(track, playDest.stream);
+  }
+  const offer = await pcSend.createOffer();
+  await pcSend.setLocalDescription(offer);
+  await pcRecv.setRemoteDescription(offer);
+  const answer = await pcRecv.createAnswer();
+  await pcRecv.setLocalDescription(answer);
+  await pcSend.setRemoteDescription(answer);
+}
+
 function playPcm(int16) {
-  if (!playCtx) playCtx = new AudioContext();
+  if (!playCtx || !playDest) return;  // 首帧应在 startMic 里预热完成
   if (playCtx.state === "suspended") playCtx.resume();
 
   const float32 = new Float32Array(int16.length);
@@ -154,7 +189,7 @@ function playPcm(int16) {
 
   const source = playCtx.createBufferSource();
   source.buffer = buffer;
-  source.connect(playCtx.destination);
+  source.connect(playDest);
 
   const startAt = Math.max(playCtx.currentTime + 0.05, nextPlayTime);
   source.start(startAt);
@@ -195,6 +230,9 @@ async function startMic() {
   micNode = new AudioWorkletNode(micCtx, "pcm-capture");
   micNode.port.onmessage = (event) => sendAudioFrame(event.data);
   micCtx.createMediaStreamSource(micStream).connect(micNode);
+
+  // 借这次用户手势把 TTS 播放链路和 AEC 回环也建起来
+  await ensurePlayback();
 
   micOn = true;
   micBtn.classList.add("mic-on");
