@@ -11,6 +11,12 @@
 #define LOGFMT "string"
 #include <iostream>
 using namespace std;
+
+LogFac& LogFac::Instance() {
+	static LogFac fac;
+	return fac;
+}
+
 void LogFac::Init(const std::string& con_file) {
 	XConfig conf;
 	bool re = conf.Read(con_file);

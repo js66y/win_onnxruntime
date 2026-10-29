@@ -2,6 +2,7 @@
 #include "xlog_format.h"
 #include <sstream>
 #include <iomanip>
+#include <ctime>
 using namespace std;
 
 static std::string GetNow(

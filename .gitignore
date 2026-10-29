@@ -1,0 +1,10 @@
+build*/
+out/
+cmake/
+bin/
+lib/
+
+
+.vs/
+.vscode/
+.idea/

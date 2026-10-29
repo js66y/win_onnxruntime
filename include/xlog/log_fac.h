@@ -5,10 +5,7 @@
 class XLOG_API LogFac
 {
 public:
-	static LogFac& Instance() {
-		static LogFac fac;
-		return fac;
-	}
+	static LogFac& Instance();
 	void Init(const std::string& con_file="log.conf");
 	Logger& logger(){return logger_;}
 private:

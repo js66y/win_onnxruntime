@@ -2,6 +2,7 @@
 #include <iostream>
 #include <string>
 #include <functional>
+#include <cstdio>
 using namespace std;
 #ifdef _WIN32
 #else

@@ -1,4 +1,4 @@
-#pragma once+
+#pragma once
 #include "xlog.h"
 #include <queue>
 #include <string>

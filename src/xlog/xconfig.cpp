@@ -5,8 +5,7 @@ bool XConfig::Read(const std::string& file) {
 	ifstream ifs(file);
 	if(!ifs.is_open())return false;
 	string line;
-	for (;;) {
-		getline(ifs, line);
+	while (getline(ifs, line)) {
 		string k,v;
 		if (!line.empty()) {
 			auto p = line.find("=");
@@ -15,14 +14,14 @@ bool XConfig::Read(const std::string& file) {
 			v = line.substr(p+1);
 			conf_[k] = v;
 		}
-		if (!ifs.good()) break;
 	}
 	return true;
 }
 
 const std::string& XConfig::Get(const std::string & key)
 {
+	static const std::string kEmpty;
 	auto c=conf_.find(key);
-	if (c==conf_.end()) return "";
+	if (c==conf_.end()) return kEmpty;
 	return c->second;
 }
