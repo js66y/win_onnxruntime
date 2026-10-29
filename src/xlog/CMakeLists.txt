@@ -1,15 +1,15 @@
 set(XLOG_SOURCES
   log_fac.cpp
   logger.cpp
-  log_consol_output.cpp
-  log_file_output.cpp
-  log_file_thread_output.cpp
+  output/log_consol_output.cpp
+  output/log_file_output.cpp
+  output/log_file_thread_output.cpp
   xconfig.cpp
   xexec.cpp
   user_input.cpp
   xlog.cpp
-  xlog_format.cpp
-  xml_format.cpp
+  format/xlog_format.cpp
+  format/xml_format.cpp
 )
 
 add_library(xlog SHARED ${XLOG_SOURCES})
