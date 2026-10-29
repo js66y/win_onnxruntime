@@ -1,0 +1,5 @@
+2024-10-18 11:52:39 debug test logger H:\代码\test_class_xlog\test_class_xlog.cpp:27
+2024-10-18 11:52:39 debug test LogFac debug H:\代码\test_class_xlog\test_class_xlog.cpp:28
+2024-10-18 11:52:39 info test LogFac info H:\代码\test_class_xlog\test_class_xlog.cpp:29
+2024-10-18 11:52:39 error test LogFac error H:\代码\test_class_xlog\test_class_xlog.cpp:30
+2024-10-18 11:52:39 fatal test LogFac fatal H:\代码\test_class_xlog\test_class_xlog.cpp:31
