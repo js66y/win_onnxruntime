@@ -1,4 +1,3 @@
-
 ```Markdown
 随便记一记
 
@@ -24,3 +23,8 @@ src/
   xlog/
 tests/        # unit + sim + e2e
 ```
+
+
+
+
+chcp 65001
