@@ -4,7 +4,7 @@
 #include "output/log_consol_output.h"
 #include "output/log_file_output.h"
 #include "output/log_file_thread_output.h"
-#include "util/xconfig.h"
+#include "xconfig.h"
 #define LOGFILE "log.txt"
 #define LOGTYPE "console"
 #define LOGLEVEL "debug"
