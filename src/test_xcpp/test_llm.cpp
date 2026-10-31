@@ -1,38 +1,36 @@
-#include "llm_api.h"          // ChatMessage 的定义在这里
-#include "openai_backend.h"
+#include "llm_api.h"
 #include <iostream>
-using namespace std;
 
-int main(){
-    OpenAIBackend::Config cfg;
-    cfg.api_base = "https://api.deepseek.com";   // 不带结尾 /
+int main() {
+    LlmConfig cfg;
+    cfg.api_base = "https://api.deepseek.com";
     cfg.api_key  = "sk-41fb2561297b4258be533dbfcfcf439e";
     cfg.model    = "deepseek-flash";
     cfg.request_timeout_s = 120;
+    cfg.max_tokens  = 256;
+    cfg.temperature = 0.7f;
 
-    OpenAIBackend backend(cfg);
-    backend.initialize();
-
-    ChatParams p;
-    p.max_tokens  = 256;
-    p.temperature = 0.7f;
+    LlmClient llm(cfg);
 
     std::vector<ChatMessage> msgs = {
-        ChatMessage::System("你是一个助手"),
+        ChatMessage::System("你是一个真实人类助手,请用中文回答问题。"),
         ChatMessage::User("你好"),
     };
 
     // 非流式
-    ChatResult r = backend.chat(msgs, p);
-    if (!r.error.empty()) { /* 失败 */ }
-    std::cout << r.content;
+    // ChatResult r = llm.Chat(msgs);
+    // if (!r.ok()) {
+    //     std::cerr << r.error << "\n";
+    // } else {
+    //     std::cout << r.content << "\n";
+    // }
 
     // 流式
-    backend.chat_stream(msgs, p,
+    llm.ChatStream(msgs,
         [](const std::string& chunk, bool done, const std::string& err) {
-            if (!err.empty()) { /* 错误 */ return false; }
+            if (!err.empty()) { std::cerr << err; return false; }
             if (!done) std::cout << chunk;
             return true;      // 返回 false 可中途取消
         });
-
+    std::cout << std::endl;
 }
